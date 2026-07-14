@@ -2,5 +2,5 @@ apiVersion: v2
 name: neon-postgres-database
 description: Neon Claimable Postgres chart for Krateo challenge
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.1.1
+appVersion: "0.1.1"

@@ -1,198 +1,149 @@
-# Krateo Challenge: Neon Claimable Postgres Playground
+# Krateo Challenge: Neon Postgres
 
-Challenge tecnica per creare un database **Postgres cloud reale** su **Neon** usando **Krateo PlatformOps** e un **Kubernetes Job**.
+Flow completo per preparare la challenge da zero: creazione cluster Kind, installazione `krateoctl`, installazione Krateo, deploy della `CompositionDefinition` e creazione della Composition che provisiona un database Neon Postgres tramite Job.
 
-Questa prima versione è volutamente semplice: **niente OASGen per ora**. Il provisioning avviene tramite un Job creato dal chart Helm.
-
-## Obiettivo
-
-Costruire un blueprint self-service Krateo che permetta a un utente di richiedere un database Postgres cloud compilando pochi campi.
-
-Il chart chiama la Neon Claimable Postgres API:
-
-```http
-POST https://neon.new/api/v1/database
-```
-
-Questa API crea un database temporaneo gratuito, senza account Neon e senza API key. Il database scade se non viene claimato.
-
-## Architettura
+Il chart Helm è pubblico su GHCR:
 
 ```text
-Utente
-  ↓
-Krateo Portal
-  ↓
-Composition: NeonPostgresDatabase
-  ↓
-Krateo Core Provider / CDC
-  ↓
-Helm chart neon-postgres-database
-  ↓
-Kubernetes Job
-  ↓
-Neon Claimable Postgres API
-  ↓
-Postgres cloud reale
+oci://ghcr.io/federicolepera/krateo-challenge-lepera/charts/neon-postgres-database:0.1.1
 ```
 
-## Cosa viene creato localmente
-
-- cluster Kind `krateo-neon-challenge`;
-- Krateo nel namespace `krateo-system`;
-- namespace workload `neon-demo`;
-- ServiceAccount, Role e RoleBinding per il Job;
-- Job di provisioning;
-- Secret con connection string Neon.
-
-## Cosa viene creato su Neon cloud
-
-- database Postgres Claimable;
-- progetto Neon associato;
-- connection string;
-- claim URL;
-- expiration date.
-
-## Form / valori esposti
-
-Il chart espone questi valori:
-
-```yaml
-databaseName: krateo-challenge-db
-referrer: krateo-challenge-lepera
-enableLogicalReplication: false
-createConnectionSecret: true
-seedSampleData: true
-```
-
-## Secret generato
-
-Il Job crea un Secret Kubernetes con:
-
-```text
-DATABASE_URL
-DATABASE_URL_DIRECT
-CLAIM_URL
-EXPIRES_AT
-NEON_DATABASE_ID
-NEON_PROJECT_ID
-```
-
-Il Job è idempotente: se il Secret esiste già e contiene `DATABASE_URL`, non crea un nuovo database.
-
-## Prerequisiti
-
-- Docker;
-- kind;
-- kubectl;
-- helm;
-- krateoctl;
-- accesso internet dal cluster verso `https://neon.new`.
-
-## Validazione rapida senza Krateo
-
-Questo è il primo test consigliato, perché non richiede pubblicare il chart in OCI.
-
-```bash
-./scripts/create-kind-cluster.sh
-./scripts/deploy-wrapper-chart.sh
-```
-
-Verifica:
-
-```bash
-kubectl -n neon-demo get jobs,pods,secrets
-kubectl -n neon-demo logs job/neon-postgres-wrapper-neon-postgres-database
-kubectl -n neon-demo get secret neon-postgres-wrapper-neon-postgres-database-connection -o yaml
-```
-
-Decodifica la connection string:
-
-```bash
-kubectl -n neon-demo get secret neon-postgres-wrapper-neon-postgres-database-connection \
-  -o jsonpath='{.data.DATABASE_URL}' | base64 --decode; echo
-```
-
-## Flow completo con Krateo
-
-Krateo Core Provider deve poter scaricare il chart da un registry OCI o da un repository Helm. Quindi, per usare la CompositionDefinition, prima pubblica il chart.
-
-### 1. Setup cluster e Krateo
-
-```bash
-./scripts/create-kind-cluster.sh
-./scripts/install-krateoctl.sh
-./scripts/create-krateo-secrets.sh
-./scripts/install-krateo-platformops.sh
-kubectl apply -f krateo/namespace.yaml
-```
-
-### 2. Pubblica il chart su GHCR
-
-Ad ogni push su `main`/`master`, la GitHub Action:
-
-```text
-.github/workflows/publish-helm-chart.yml
-```
-
-pacchettizza il chart e lo pubblica su:
-
-```text
-oci://ghcr.io/federicolepera/krateo-challenge-lepera/charts/neon-postgres-database:0.1.0
-```
-
-Per Krateo i valori sono:
+La `CompositionDefinition` usa:
 
 ```yaml
 chart:
   url: oci://ghcr.io/federicolepera/krateo-challenge-lepera/charts
   repo: neon-postgres-database
-  version: 0.1.0
+  version: 0.1.1
 ```
 
-Nota: se il package GHCR resta privato, Krateo dentro il cluster non riuscirà a scaricarlo senza credenziali. Per una challenge semplice conviene rendere pubblico il package oppure configurare le credenziali OCI per il core-provider.
-
-#### Pubblicazione manuale
-
-Prima fai login:
+## 1. Crea il cluster Kind
 
 ```bash
-helm registry login ghcr.io -u <github-user>
+./scripts/create-kind-cluster.sh
 ```
 
-Poi pubblica e registra la CompositionDefinition:
+Crea il cluster:
+
+```text
+krateo-neon-challenge
+```
+
+e imposta il context Kubernetes.
+
+Verifica:
 
 ```bash
-./scripts/publish-chart-ghcr.sh
+kubectl cluster-info
+kubectl get nodes
 ```
 
-Lo script registra:
+## 2. Installa krateoctl
 
-```yaml
-apiVersion: core.krateo.io/v1alpha1
-kind: CompositionDefinition
-metadata:
-  name: neon-postgres-database
-  namespace: krateo-system
-spec:
-  chart:
-    repo: neon-postgres-database
-    url: oci://ghcr.io/federicolepera/krateo-challenge-lepera/charts
-    version: 0.1.0
+```bash
+./scripts/install-krateoctl.sh
 ```
 
-### 3. Crea una Composition
+Verifica:
 
-Quando la CRD generata è disponibile:
+```bash
+krateoctl version
+```
+
+## 3. Crea i secret richiesti da Krateo
+
+```bash
+./scripts/create-krateo-secrets.sh
+```
+
+Crea i secret nel namespace `krateo-system`:
+
+```text
+jwt-sign-key
+krateo-db
+krateo-db-user
+```
+
+Verifica:
+
+```bash
+kubectl -n krateo-system get secrets
+```
+
+## 4. Installa Krateo PlatformOps
+
+```bash
+./scripts/install-krateo-platformops.sh
+```
+
+Lo script esegue:
+
+```bash
+krateoctl install plan --version 3.0.0 --type nodeport --namespace krateo-system
+krateoctl install apply --version 3.0.0 --type nodeport --namespace krateo-system
+```
+
+Verifica che tutti i pod siano pronti:
+
+```bash
+kubectl -n krateo-system get pods
+```
+
+## 5. Crea il namespace workload
+
+```bash
+kubectl apply -f krateo/namespace.yaml
+```
+
+Crea:
+
+```text
+neon-demo
+```
+
+Verifica:
+
+```bash
+kubectl get ns neon-demo
+```
+
+## 6. Registra la CompositionDefinition
+
+```bash
+./scripts/register-compositiondefinition.sh
+```
+
+Questo applica:
+
+```text
+krateo/compositiondefinition.yaml
+```
+
+La CompositionDefinition registra il blueprint `neon-postgres-database` e punta al chart pubblico su GHCR.
+
+Verifica:
+
+```bash
+kubectl -n krateo-system get compositiondefinitions.core.krateo.io
+kubectl -n krateo-system describe compositiondefinition neon-postgres-database
+```
+
+Attendi che Krateo generi la CRD della Composition:
+
+```bash
+kubectl get crd | grep -i neon
+```
+
+## 7. Crea la Composition NeonPostgresDatabase
 
 ```bash
 kubectl apply -f krateo/neonpostgres-test.yaml
 ```
 
-Manifest:
+La Composition è:
 
 ```yaml
-apiVersion: composition.krateo.io/v0-1-0
+apiVersion: composition.krateo.io/v0-1-1
 kind: NeonPostgresDatabase
 metadata:
   name: neonpostgres-test
@@ -205,80 +156,93 @@ spec:
   seedSampleData: true
 ```
 
-## Frontend Krateo
+Krateo installerà il chart e farà partire un Job Kubernetes che chiama Neon Claimable Postgres API.
+
+Verifica:
+
+```bash
+kubectl -n neon-demo get neonpostgresdatabases.composition.krateo.io
+kubectl -n neon-demo get jobs,pods,secrets
+```
+
+Guarda i log del Job:
+
+```bash
+kubectl -n neon-demo logs job/<job-name>
+```
+
+## 8. Recupera la connection string Neon
+
+Lista i Secret:
+
+```bash
+kubectl -n neon-demo get secrets
+```
+
+Decodifica `DATABASE_URL`:
+
+```bash
+kubectl -n neon-demo get secret <secret-name> \
+  -o jsonpath='{.data.DATABASE_URL}' | base64 --decode; echo
+```
+
+Il Secret contiene:
+
+```text
+DATABASE_URL
+DATABASE_URL_DIRECT
+CLAIM_URL
+EXPIRES_AT
+NEON_DATABASE_ID
+NEON_PROJECT_ID
+```
+
+## 9. Apri il frontend Krateo
+
+Con Kind, il NodePort `30080` potrebbe non essere esposto direttamente sul tuo host. Usa il port-forward:
 
 ```bash
 ./scripts/run-krateo-frontend.sh
 ```
 
-URL:
+Apri:
 
 ```text
 http://localhost:30080
 ```
 
-Lo script stampa anche le password degli utenti `admin` e `cyberjoker`, se i secret sono presenti.
+Lo script espone anche:
 
-## Stato e troubleshooting
+```text
+Auth API:  http://127.0.0.1:30082
+Snowplow:  http://127.0.0.1:30081
+Events:    http://127.0.0.1:30083
+```
+
+## 10. Check generale
 
 ```bash
 ./scripts/check-setup-status.sh
-kubectl -n neon-demo get jobs,pods,secrets
-kubectl -n neon-demo describe job <job-name>
-kubectl -n neon-demo logs job/<job-name>
 ```
 
-Se il Job fallisce per assenza di tooling nell’immagine, controlla i log: lo script prova a installare `curl`, `jq`, `kubectl` e `postgresql-client` via `apk` quando necessario.
+## Comando unico parziale
 
-## Differenza con la challenge MongoDB Atlas
+Puoi usare anche:
 
-Nella challenge MongoDB Atlas:
-
-```text
-Krateo → Helm chart → AtlasProject/AtlasDeployment → Atlas Operator → MongoDB Atlas API
+```bash
+./scripts/run-challenge-flow.sh
 ```
 
-Qui invece:
+Poi, se la CRD non è ancora pronta, rilancia:
 
-```text
-Krateo → Helm chart → Kubernetes Job → Neon Claimable Postgres API
+```bash
+kubectl apply -f krateo/neonpostgres-test.yaml
 ```
-
-Pro:
-
-- niente account cloud;
-- niente API key;
-- niente carta;
-- demo più semplice;
-- Postgres cloud reale.
-
-Contro:
-
-- il Job non è un controller vero;
-- update/delete non sono robusti come con un operator;
-- il database Neon Claimable è temporaneo se non viene claimato.
 
 ## Cleanup
 
-Risorse locali:
-
 ```bash
-helm -n neon-demo uninstall neon-postgres-wrapper || true
 kubectl delete -f krateo/neonpostgres-test.yaml || true
+kubectl delete -f krateo/compositiondefinition.yaml || true
 kind delete cluster --name krateo-neon-challenge
 ```
-
-Risorse Neon:
-
-- se non claimi il database, scade automaticamente;
-- se lo claimi, cancellalo dalla console Neon quando non serve più.
-
-## Prossimo step possibile
-
-La versione successiva può introdurre OASGen:
-
-```text
-Krateo → OASGen → CRD NeonDatabase → Rest Dynamic Controller → Neon API
-```
-
-Per ora questa challenge resta volutamente Job-based per massimizzare semplicità e affidabilità.
