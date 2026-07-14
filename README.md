@@ -1,6 +1,11 @@
 # Krateo Challenge: Neon Postgres
 
-Flow completo per preparare la challenge da zero: creazione cluster Kind, installazione `krateoctl`, installazione Krateo, deploy della `CompositionDefinition` e creazione della Composition che provisiona un database Neon Postgres tramite Job.
+Flow completo per preparare la challenge da zero: creazione cluster Kind, installazione `krateoctl`, installazione Krateo e creazione di un database Neon Postgres tramite Job.
+
+Dopo l'installazione di Krateo puoi scegliere una delle due opzioni:
+
+- **Opzione A - CompositionDefinition**: registri la `CompositionDefinition` e poi crei la Composition con `kubectl`.
+- **Opzione B - Blueprint frontend**: registri il Blueprint e poi crei la Composition dal frontend Krateo.
 
 Il chart Helm è pubblico su GHCR:
 
@@ -107,7 +112,13 @@ Verifica:
 kubectl get ns neon-demo
 ```
 
-## 6. Registra la CompositionDefinition
+## 6. Scegli come creare la Composition
+
+### Opzione A - CompositionDefinition + kubectl
+
+Usa questa opzione se vuoi creare la Composition da terminale.
+
+#### A1. Registra la CompositionDefinition
 
 ```bash
 ./scripts/register-compositiondefinition.sh
@@ -119,7 +130,7 @@ Questo applica:
 krateo/compositiondefinition.yaml
 ```
 
-La CompositionDefinition registra il blueprint `neon-postgres-database` e punta al chart pubblico su GHCR.
+La CompositionDefinition registra il tipo `NeonPostgresDatabase` e punta al chart pubblico su GHCR.
 
 Verifica:
 
@@ -134,29 +145,7 @@ Attendi che Krateo generi la CRD della Composition:
 kubectl get crd | grep -i neon
 ```
 
-## 7. Registra il blueprint nel frontend Krateo
-
-```bash
-./scripts/register-portal-blueprint.sh
-```
-
-Questo installa il chart ufficiale `portal-blueprint-page` con Helm usando:
-
-```text
-krateo/portal-blueprint-page-values.yaml
-```
-
-Serve per vedere `Neon Postgres` nella pagina **Blueprints** del frontend.
-
-Verifica:
-
-```bash
-helm -n neon-demo status neon-postgres-database
-kubectl -n neon-demo get compositiondefinition neon-postgres-database
-kubectl -n neon-demo get panels,forms,restactions | grep neon-postgres-database
-```
-
-## 8. Crea la Composition NeonPostgresDatabase
+#### A2. Crea la Composition NeonPostgresDatabase
 
 ```bash
 kubectl apply -f krateo/neonpostgres-test.yaml
@@ -193,9 +182,66 @@ Guarda i log del Job:
 kubectl -n neon-demo logs job/<job-name>
 ```
 
+### Opzione B - Blueprint + frontend Krateo
+
+Usa questa opzione se vuoi vedere `Neon Postgres` nella pagina **Blueprints** e creare la Composition tramite form dal frontend.
+
+#### B1. Registra il Blueprint nel frontend Krateo
+
+```bash
+./scripts/register-portal-blueprint.sh
+```
+
+Questo installa il chart ufficiale `portal-blueprint-page` con Helm usando:
+
+```text
+krateo/portal-blueprint-page-values.yaml
+```
+
+Il chart `portal-blueprint-page` crea sia le risorse frontend del Blueprint, sia la `CompositionDefinition` necessaria a Krateo per generare il tipo `NeonPostgresDatabase`.
+
+Verifica:
+
+```bash
+helm -n neon-demo status neon-postgres-database
+kubectl -n neon-demo get compositiondefinition neon-postgres-database
+kubectl -n neon-demo get panels,forms,restactions | grep neon-postgres-database
+```
+
+#### B2. Crea la Composition dal frontend
+
+Apri il frontend Krateo, vai in **Blueprints**, clicca **Neon Postgres**, compila il form e conferma la creazione.
+
+La Composition creata dal frontend sarà dello stesso tipo:
+
+```yaml
+apiVersion: composition.krateo.io/v0-1-2
+kind: NeonPostgresDatabase
+metadata:
+  name: <nome-scelto-nel-form>
+  namespace: neon-demo
+spec:
+  databaseName: <database-name>
+```
+
+Anche in questo caso Krateo installerà il chart e farà partire un Job Kubernetes che chiama Neon Claimable Postgres API.
+
+Verifica:
+
+```bash
+kubectl -n neon-demo get neonpostgresdatabases.composition.krateo.io
+kubectl -n neon-demo get jobs,pods,secrets
+```
+
+Guarda i log del Job:
+
+```bash
+kubectl -n neon-demo logs job/<job-name>
+```
+
 Il chart include anche `portal-composition-page-generic`, quindi per ogni Composition crea le risorse frontend necessarie alla pagina di dettaglio della Composition.
 
-## 9. Recupera la connection string Neon
+## 7. Recupera la connection string Neon
 
 Lista i Secret:
 
@@ -221,7 +267,7 @@ NEON_DATABASE_ID
 NEON_PROJECT_ID
 ```
 
-## 10. Apri il frontend Krateo
+## 8. Apri il frontend Krateo
 
 Con Kind, il NodePort `30080` potrebbe non essere esposto direttamente sul tuo host. Usa il port-forward:
 
@@ -243,7 +289,7 @@ Snowplow:  http://127.0.0.1:30081
 Events:    http://127.0.0.1:30083
 ```
 
-## 11. Check generale
+## 9. Check generale
 
 ```bash
 ./scripts/check-setup-status.sh
@@ -251,11 +297,13 @@ Events:    http://127.0.0.1:30083
 
 ## Comando unico parziale
 
-Puoi usare anche:
+Puoi usare anche questo comando per una demo completa automatizzata:
 
 ```bash
 ./scripts/run-challenge-flow.sh
 ```
+
+Questo script installa Krateo, registra anche il Blueprint frontend e applica la Composition di test con `kubectl`.
 
 Poi, se la CRD non è ancora pronta, rilancia:
 
@@ -266,6 +314,7 @@ kubectl apply -f krateo/neonpostgres-test.yaml
 ## Cleanup
 
 ```bash
+helm -n neon-demo uninstall neon-postgres-database || true
 kubectl delete -f krateo/neonpostgres-test.yaml || true
 kubectl delete -f krateo/compositiondefinition.yaml || true
 kind delete cluster --name krateo-neon-challenge
