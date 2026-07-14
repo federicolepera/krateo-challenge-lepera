@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/schema#",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["databaseName", "referrer", "enableLogicalReplication", "createConnectionSecret", "seedSampleData"],
+  "properties": {
+    "databaseName": {"type": "string", "title": "Database Name", "description": "Logical name used by the challenge and as part of the Neon claim ref.", "minLength": 1, "maxLength": 48, "pattern": "^[a-zA-Z0-9][a-zA-Z0-9-]*$"},
+    "referrer": {"type": "string", "title": "Referrer", "description": "Referrer identifier sent to Neon Claimable Postgres API.", "minLength": 1, "maxLength": 48, "pattern": "^[a-zA-Z0-9][a-zA-Z0-9-]*$"},
+    "enableLogicalReplication": {"type": "boolean", "title": "Enable logical replication", "default": false},
+    "createConnectionSecret": {"type": "boolean", "title": "Create connection Secret", "default": true},
+    "seedSampleData": {"type": "boolean", "title": "Seed sample data", "default": false},
+    "forceRecreate": {"type": "boolean", "title": "Force recreate", "description": "Ignore existing connection Secret and request a new Neon claimable database.", "default": false},
+    "secretName": {"type": "string", "title": "Secret name"},
+    "serviceAccountName": {"type": "string", "title": "ServiceAccount name"},
+    "global": {"type": "object", "description": "Krateo-injected global values.", "additionalProperties": true},
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repository": {"type": "string"},
+        "tag": {"type": "string"},
+        "pullPolicy": {"type": "string"}
+      }
+    }
+  }
+}

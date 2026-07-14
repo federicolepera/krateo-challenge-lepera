@@ -1,0 +1,46 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "neon-postgres-chart.fullname" . }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      serviceAccountName: {{ include "neon-postgres-chart.serviceAccountName" . }}
+      restartPolicy: Never
+      containers:
+        - name: provisioner
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "/scripts/provision.sh"]
+          env:
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: SECRET_NAME
+              value: {{ include "neon-postgres-chart.secretName" . | quote }}
+            - name: DATABASE_NAME
+              value: {{ .Values.databaseName | quote }}
+            - name: REFERRER
+              value: {{ .Values.referrer | quote }}
+            - name: ENABLE_LOGICAL_REPLICATION
+              value: {{ .Values.enableLogicalReplication | quote }}
+            - name: CREATE_CONNECTION_SECRET
+              value: {{ .Values.createConnectionSecret | quote }}
+            - name: SEED_SAMPLE_DATA
+              value: {{ .Values.seedSampleData | quote }}
+            - name: FORCE_RECREATE
+              value: {{ .Values.forceRecreate | quote }}
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+      volumes:
+        - name: scripts
+          configMap:
+            name: {{ include "neon-postgres-chart.fullname" . }}-script
+            defaultMode: 0755

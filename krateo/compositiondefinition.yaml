@@ -1,0 +1,10 @@
+apiVersion: core.krateo.io/v1alpha1
+kind: CompositionDefinition
+metadata:
+  name: neon-postgres-database
+  namespace: krateo-system
+spec:
+  chart:
+    url: oci://ghcr.io/federicolepera/krateo-challenge-lepera/charts
+    version: 0.1.0
+    repo: neon-postgres-database

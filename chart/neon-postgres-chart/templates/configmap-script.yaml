@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "neon-postgres-chart.fullname" . }}-script
+data:
+  provision.sh: |
+    #!/bin/sh
+    set -eu
+    NAMESPACE="${NAMESPACE:?}"
+    SECRET_NAME="${SECRET_NAME:?}"
+    DATABASE_NAME="${DATABASE_NAME:?}"
+    REFERRER="${REFERRER:?}"
+    ENABLE_LOGICAL_REPLICATION="${ENABLE_LOGICAL_REPLICATION:?}"
+    CREATE_CONNECTION_SECRET="${CREATE_CONNECTION_SECRET:?}"
+    SEED_SAMPLE_DATA="${SEED_SAMPLE_DATA:?}"
+    FORCE_RECREATE="${FORCE_RECREATE:-false}"
+
+    ensure_tooling() {
+      missing=""
+      for cmd in curl jq kubectl; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+          missing="$missing $cmd"
+        fi
+      done
+
+      if [ -n "$missing" ]; then
+        if command -v apk >/dev/null 2>&1; then
+          echo "Installing missing tools:$missing"
+          apk add --no-cache curl jq kubectl >/dev/null
+        else
+          echo "Missing required tools:$missing and apk is not available" >&2
+          exit 1
+        fi
+      fi
+    }
+
+    ensure_tooling
+
+    if [ "$FORCE_RECREATE" != "true" ] && kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" >/dev/null 2>&1; then
+      if kubectl -n "$NAMESPACE" get secret "$SECRET_NAME" -o jsonpath='{.data.DATABASE_URL}' | grep -q .; then
+        echo "Secret already exists with DATABASE_URL; skipping provisioning"
+        exit 0
+      fi
+    fi
+
+    SAFE_REF=$(printf '%s-%s' "$REFERRER" "$DATABASE_NAME" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' | sed 's/--*/-/g; s/^-//; s/-$//' | cut -c1-63)
+    PAYLOAD=$(printf '{"ref":"%s","enable_logical_replication":%s}' "$SAFE_REF" "$ENABLE_LOGICAL_REPLICATION")
+    echo "Requesting Neon Claimable Postgres database with ref: $SAFE_REF"
+    RESPONSE=$(curl -fsS -X POST https://neon.new/api/v1/database -H 'Content-Type: application/json' -d "$PAYLOAD")
+    DATABASE_URL=$(printf '%s' "$RESPONSE" | jq -r '.connection_string // .database_url // .DATABASE_URL // empty')
+    if [ -z "$DATABASE_URL" ]; then
+      echo "Neon response did not contain a connection string" >&2
+      printf '%s\n' "$RESPONSE" >&2
+      exit 1
+    fi
+    DATABASE_URL_DIRECT=$(printf '%s' "$DATABASE_URL" | sed 's/-pooler//')
+    CLAIM_URL=$(printf '%s' "$RESPONSE" | jq -r '.claim_url // empty')
+    EXPIRES_AT=$(printf '%s' "$RESPONSE" | jq -r '.expires_at // empty')
+    NEON_DATABASE_ID=$(printf '%s' "$RESPONSE" | jq -r '.id // .database_id // empty')
+    NEON_PROJECT_ID=$(printf '%s' "$RESPONSE" | jq -r '.neon_project_id // .project_id // empty')
+
+    if [ "$CREATE_CONNECTION_SECRET" = "true" ]; then
+      kubectl -n "$NAMESPACE" create secret generic "$SECRET_NAME" \
+        --from-literal=DATABASE_URL="$DATABASE_URL" \
+        --from-literal=DATABASE_URL_DIRECT="$DATABASE_URL_DIRECT" \
+        --from-literal=CLAIM_URL="$CLAIM_URL" \
+        --from-literal=EXPIRES_AT="$EXPIRES_AT" \
+        --from-literal=NEON_DATABASE_ID="$NEON_DATABASE_ID" \
+        --from-literal=NEON_PROJECT_ID="$NEON_PROJECT_ID" \
+        --dry-run=client -o yaml | kubectl apply -f -
+      kubectl -n "$NAMESPACE" label secret "$SECRET_NAME" \
+        app.kubernetes.io/managed-by=krateo-neon-challenge \
+        app.kubernetes.io/instance="$DATABASE_NAME" \
+        --overwrite >/dev/null
+    fi
+
+    if [ "$SEED_SAMPLE_DATA" = "true" ]; then
+      if command -v psql >/dev/null 2>&1; then
+        true
+      elif command -v apk >/dev/null 2>&1; then
+        echo "Installing postgresql-client for seed step"
+        apk add --no-cache postgresql-client >/dev/null
+      fi
+
+      if command -v psql >/dev/null 2>&1; then
+        psql "$DATABASE_URL_DIRECT" -v ON_ERROR_STOP=1 \
+          -c "CREATE TABLE IF NOT EXISTS krateo_challenge_info (id SERIAL PRIMARY KEY, source TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT now());" \
+          -c "INSERT INTO krateo_challenge_info (source) VALUES ('krateo-challenge-lepera');"
+      else
+        echo "psql not available; skipping seed step"
+      fi
+    fi
