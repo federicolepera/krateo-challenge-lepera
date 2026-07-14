@@ -1,0 +1,19 @@
+apiVersion: composition.krateo.io/v1-0-6
+kind: PortalBlueprintPage
+metadata:
+  name: neon-postgres-database
+  namespace: neon-demo
+spec:
+  blueprint:
+    repo: neon-postgres-database
+    url: oci://ghcr.io/federicolepera/krateo-challenge-lepera/charts
+    version: 0.1.2
+    hasPage: true
+  form:
+    alphabeticalOrder: false
+  panel:
+    title: Neon Postgres
+    icon:
+      name: fa-database
+  global:
+    compositionName: neon-postgres-database

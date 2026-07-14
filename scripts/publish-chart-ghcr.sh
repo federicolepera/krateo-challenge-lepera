@@ -12,6 +12,7 @@ OCI_BASE="oci://ghcr.io/${GITHUB_OWNER}/${GHCR_REPO_PREFIX}"
 PACKAGE_FILE="${DIST_DIR}/${CHART_NAME}-${CHART_VERSION}.tgz"
 
 mkdir -p "$DIST_DIR"
+helm dependency build "$CHART_DIR"
 helm package "$CHART_DIR" -d "$DIST_DIR"
 helm push "$PACKAGE_FILE" "$OCI_BASE"
 

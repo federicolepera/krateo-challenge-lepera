@@ -41,11 +41,14 @@ jobs:
           echo "package=${chart_name}-${chart_version}.tgz" >> "$GITHUB_OUTPUT"
 
       - name: Lint chart
-        run: helm lint "$CHART_DIR"
+        run: |
+          helm dependency build "$CHART_DIR"
+          helm lint "$CHART_DIR"
 
       - name: Package chart
         run: |
           mkdir -p dist
+          helm dependency build "$CHART_DIR"
           helm package "$CHART_DIR" --destination dist
 
       - name: Login to GHCR

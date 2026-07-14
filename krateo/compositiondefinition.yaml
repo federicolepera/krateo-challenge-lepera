@@ -6,5 +6,5 @@ metadata:
 spec:
   chart:
     url: oci://ghcr.io/federicolepera/krateo-challenge-lepera/charts
-    version: 0.1.1
+    version: 0.1.2
     repo: neon-postgres-database

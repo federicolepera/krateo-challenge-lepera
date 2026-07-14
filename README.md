@@ -5,7 +5,7 @@ Flow completo per preparare la challenge da zero: creazione cluster Kind, instal
 Il chart Helm è pubblico su GHCR:
 
 ```text
-oci://ghcr.io/federicolepera/krateo-challenge-lepera/charts/neon-postgres-database:0.1.1
+oci://ghcr.io/federicolepera/krateo-challenge-lepera/charts/neon-postgres-database:0.1.2
 ```
 
 La `CompositionDefinition` usa:
@@ -14,7 +14,7 @@ La `CompositionDefinition` usa:
 chart:
   url: oci://ghcr.io/federicolepera/krateo-challenge-lepera/charts
   repo: neon-postgres-database
-  version: 0.1.1
+  version: 0.1.2
 ```
 
 ## 1. Crea il cluster Kind
@@ -134,7 +134,28 @@ Attendi che Krateo generi la CRD della Composition:
 kubectl get crd | grep -i neon
 ```
 
-## 7. Crea la Composition NeonPostgresDatabase
+## 7. Registra il blueprint nel frontend Krateo
+
+```bash
+./scripts/register-portal-blueprint.sh
+```
+
+Questo installa/usa il blueprint ufficiale `portal-blueprint-page` e crea:
+
+```text
+krateo/portal-blueprint-page.yaml
+```
+
+Serve per vedere `Neon Postgres` nella pagina **Blueprints** del frontend.
+
+Verifica:
+
+```bash
+kubectl -n krateo-system get compositiondefinition portal-blueprint-page
+kubectl -n neon-demo get portalblueprintpage neon-postgres-database
+```
+
+## 8. Crea la Composition NeonPostgresDatabase
 
 ```bash
 kubectl apply -f krateo/neonpostgres-test.yaml
@@ -143,7 +164,7 @@ kubectl apply -f krateo/neonpostgres-test.yaml
 La Composition è:
 
 ```yaml
-apiVersion: composition.krateo.io/v0-1-1
+apiVersion: composition.krateo.io/v0-1-2
 kind: NeonPostgresDatabase
 metadata:
   name: neonpostgres-test
@@ -171,7 +192,9 @@ Guarda i log del Job:
 kubectl -n neon-demo logs job/<job-name>
 ```
 
-## 8. Recupera la connection string Neon
+Il chart include anche `portal-composition-page-generic`, quindi per ogni Composition crea le risorse frontend necessarie alla pagina di dettaglio della Composition.
+
+## 9. Recupera la connection string Neon
 
 Lista i Secret:
 
@@ -197,7 +220,7 @@ NEON_DATABASE_ID
 NEON_PROJECT_ID
 ```
 
-## 9. Apri il frontend Krateo
+## 10. Apri il frontend Krateo
 
 Con Kind, il NodePort `30080` potrebbe non essere esposto direttamente sul tuo host. Usa il port-forward:
 
@@ -219,7 +242,7 @@ Snowplow:  http://127.0.0.1:30081
 Events:    http://127.0.0.1:30083
 ```
 
-## 10. Check generale
+## 11. Check generale
 
 ```bash
 ./scripts/check-setup-status.sh
