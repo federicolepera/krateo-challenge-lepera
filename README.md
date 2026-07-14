@@ -140,10 +140,10 @@ kubectl get crd | grep -i neon
 ./scripts/register-portal-blueprint.sh
 ```
 
-Questo installa/usa il blueprint ufficiale `portal-blueprint-page` e crea:
+Questo installa il chart ufficiale `portal-blueprint-page` con Helm usando:
 
 ```text
-krateo/portal-blueprint-page.yaml
+krateo/portal-blueprint-page-values.yaml
 ```
 
 Serve per vedere `Neon Postgres` nella pagina **Blueprints** del frontend.
@@ -151,8 +151,9 @@ Serve per vedere `Neon Postgres` nella pagina **Blueprints** del frontend.
 Verifica:
 
 ```bash
-kubectl -n krateo-system get compositiondefinition portal-blueprint-page
-kubectl -n neon-demo get portalblueprintpage neon-postgres-database
+helm -n neon-demo status neon-postgres-database
+kubectl -n neon-demo get compositiondefinition neon-postgres-database
+kubectl -n neon-demo get panels,forms,restactions | grep neon-postgres-database
 ```
 
 ## 8. Crea la Composition NeonPostgresDatabase

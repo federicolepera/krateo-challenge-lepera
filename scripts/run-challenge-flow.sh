@@ -29,5 +29,6 @@ else
   ./scripts/register-compositiondefinition.sh
 fi
 
+./scripts/register-portal-blueprint.sh
 kubectl apply -f krateo/neonpostgres-test.yaml || true
 echo "Challenge flow completed. If the Composition CRD is still initializing, retry: kubectl apply -f krateo/neonpostgres-test.yaml"
